@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Glitch Pilgrim</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P" rel="stylesheet"/>
+<style>
+/* Reset and basic styling */
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+    background:#000;
+    font-family:'Press Start 2P',monospace;
+    color:#0f0;
+    overflow:hidden;
+    height:100vh;
+    cursor:none; /* Custom cursor */
+}
+
+/* Game container for positioning canvas and HUD */
+#game-container{
+    position:relative;
+    width:100%;
+    height:100vh;
+}
+
+/* Game canvas for drawing graphics */
+#game-canvas{
+    position:absolute;
+    top:0;
+    left:0;
+    width:100%; /* Make canvas responsive */
+    height:100%; /* Make canvas responsive */
+    image-rendering:pixelated; /* For retro pixel art effect */
+}
+
+/* Heads-Up Display (HUD) */
+#hud{
+    position:absolute;
+    top:20px;
+    left:20px;
+    z-index:10;
+    transition:all .3s; /* Smooth transition for corruption effect */
+}
+
+/* Corruption meter styling */
+#corruption-meter{
+    width:200px;
+    height:20px;
+    border:2px solid #0f0;
+    margin-bottom:10px;
+    border-radius: 4px; /* Rounded corners */
+    overflow: hidden;
+}
+
+#corruption-fill{
+    height:100%;
+    width:10%; /* Initial fill */
+    background:#0f0;
+    transition:width .5s; /* Smooth fill animation */
+    border-radius: 2px; /* Inner rounded corners */
+}
+
+/* Dimension indicator text */
+#dimension-indicator{
+    font-size:12px;
+    margin-bottom:10px;
+}
+
+/* Status text for game messages */
+#status-text{
+    font-size:10px;
+    max-width:300px;
+    line-height:1.5;
+}
+
+/* Glitch text animation */
+.glitch-text{
+    animation:glitch 2s infinite;
+}
+
+@keyframes glitch{
+    0%{text-shadow:0 0 5px #0f0}
+    20%{text-shadow:-2px 0 #f0f,2px 2px #0ff}
+    40%{text-shadow:2px -2px #f0f,-2px 2px #0ff}
+    60%{text-shadow:-2px 2px #f0f,2px -2px #0ff}
+    80%{text-shadow:2px 2px #f0f,-2px -2px #0ff}
+    100%{text-shadow:0 0 5px #0f0}
+}
+
+/* Intro screen styling */
+#intro-screen{
+    position:absolute;
+    inset:0; /* Top, right, bottom, left to 0 */
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    background:#000;
+    z-index:100;
+    transition:opacity 1s; /* Fade out effect */
+}
+
+/* Title styling for intro screen */
+#title{
+    font-size:32px;
+    margin-bottom:40px;
+    animation:glitch 3s infinite; /* Glitch effect on title */
+}
+
+/* Start button styling */
+#start-button{
+    background:none;
+    border:2px solid #0f0;
+    color:#0f0;
+    padding:10px 20px;
+    font-family:inherit;
+    font-size:16px;
+    cursor:pointer;
+    border-radius: 8px; /* Rounded corners */
+    transition: all 0.2s ease-in-out; /* Smooth hover effect */
+}
+
+#start-button:hover{
+    background:#0f0;
+    color:#000;
+    box-shadow:0 0 15px #0f0; /* Glow effect on hover */
+    transform: scale(1.05); /* Slightly enlarge on hover */
+}
+
+/* Corruption effect for HUD */
+.corrupted{
+    animation:corruption .5s infinite;
+}
+
+@keyframes corruption{
+    0%{filter:hue-rotate(0) blur(0)}
+    25%{filter:hue-rotate(90deg) blur(1px)}
+    50%{filter:hue-rotate(180deg) blur(0)}
+    75%{filter:hue-rotate(270deg) blur(1px)}
+    100%{filter:hue-rotate(360deg) blur(0)}
+}
+
+/* Utility class for hiding elements */
+.hidden{
+    opacity:0;
+    pointer-events:none; /* Disable interactions when hidden */
+}
+
+/* Mute button styling */
+#mute-button{
+    position:absolute;
+    bottom:20px;
+    right:20px;
+    background:none;
+    border:none;
+    color:#0f0;
+    font-size:20px;
+    cursor:pointer;
+    z-index: 10; /* Ensure it's above other elements */
+    transition: transform 0.2s ease-in-out;
+}
+
+#mute-button:hover {
+    transform: scale(1.2); /* Slightly enlarge on hover */
+}
+</style>
+</head>
+<body>
+<div id="game-container">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud">
+        <div id="corruption-meter"><div id="corruption-fill"></div></div>
+        <div id="dimension-indicator">Dimension: <span id="dimension-name">Prime Reality</span></div>
+        <div id="status-text">System stable. No anomalies detected.</div>
+    </div>
+
+    <div id="intro-screen">
+        <h1 id="title">🎮 Glitch Pilgrim</h1>
+        <p style="font-size:12px;margin-bottom:20px;max-width:600px;text-align:center">
+            Traverse a world collapsing into corruption — glitches are portals to forgotten modes of being.
+        </p>
+        <button id="start-button">ENTER THE GLITCH</button>
+    </div>
+
+    <button id="mute-button">🔊</button>
+</div>
+
+<script>
+/* ---------- basic setup ---------- */
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+const intro = document.getElementById('intro-screen');
+const startBtn = document.getElementById('start-button');
+const muteBtn = document.getElementById('mute-button');
+const corruptionFill = document.getElementById('corruption-fill');
+const dimName = document.getElementById('dimension-name');
+const statusText = document.getElementById('status-text');
+const hud = document.getElementById('hud');
+
+// Function to resize the canvas to fit the window
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize(); // Initial resize
+
+/* ---------- game state ---------- */
+let active = false; // Is the game active?
+let corruption = 10; // Current corruption level (0-100)
+let dimension = 0; // Current dimension index
+let player = { x: 0, y: 0, w: 20, h: 20, speed: 4, color: '#0f0' }; // Player properties
+let keys = {}; // Object to track pressed keys
+['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].forEach(k => keys[k] = false);
+
+// Definitions for different dimensions
+const dims = [
+    { name: 'Prime Reality', color: '#0f0', rules: 'Standard physics' },
+    { name: 'Mirror Dimension', color: '#f0f', rules: 'Inverted controls' },
+    { name: 'Pixel Decay', color: '#ff0', rules: 'Reality fragments' },
+    { name: 'Void Sector', color: '#fff', rules: 'No boundaries' },
+    { name: 'Code Overflow', color: '#0ff', rules: 'Reality loops' }
+];
+
+let glitches = []; // Array to store glitch objects
+let particles = []; // Array to store particle effects
+
+// Audio variables
+let audioCtx; // AudioContext instance
+let osc; // OscillatorNode for background melody
+let gain; // GainNode for volume control
+let muted = false; // Mute state
+let melodyNotes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5 (C major arpeggio)
+let currentNoteIndex = 0; // Index for current note in melody
+let melodyIntervalId; // ID for the melody interval to clear/reset
+
+// Variables for Code Overflow dimension timer
+let codeOverflowTimer = 0; // Tracks time spent in Code Overflow
+const codeOverflowDuration = 15; // Duration in seconds for Code Overflow
+let codeOverflowActive = false; // True if Code Overflow timer is running
+let lastFrameTime = 0; // For calculating deltaTime
+
+/* ---------- audio ---------- */
+// Initializes the Web Audio API context and nodes
+function initAudio() {
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        osc = audioCtx.createOscillator();
+        gain = audioCtx.createGain();
+
+        osc.type = 'triangle'; // Use a triangle wave for a softer, more melodic sound
+        gain.gain.value = 0.05; // Initial volume for the background melody
+
+        osc.connect(gain); // Connect oscillator to gain node
+        gain.connect(audioCtx.destination); // Connect gain node to speakers
+        osc.start(0); // Start the oscillator immediately
+
+        // Begin the melodic loop
+        startMelodyLoop();
+
+    } catch (e) {
+        console.log('Audio failed to initialize:', e);
+    }
+}
+
+// Determines the tempo of the melody based on corruption level
+function getMelodyTempo() {
+    // Tempo speeds up as corruption increases, but has a minimum tempo
+    // This makes the melody more frantic as corruption grows
+    return Math.max(150, 400 - corruption * 3); // Faster tempo with more corruption (min 150ms)
+}
+
+// Starts or restarts the melody playback loop
+function startMelodyLoop() {
+    if (melodyIntervalId) clearInterval(melodyIntervalId); // Clear any existing interval
+    melodyIntervalId = setInterval(playMelody, getMelodyTempo()); // Set new interval with dynamic tempo
+}
+
+// Plays the next note in the defined melody
+function playMelody() {
+    if (!active || muted || !osc || !audioCtx) return; // Only play if game is active, not muted, and audio is ready
+
+    // Adjust the base frequency of the current note based on corruption
+    // This creates a subtle pitch shift as corruption increases
+    const baseFreq = melodyNotes[currentNoteIndex];
+    osc.frequency.setValueAtTime(baseFreq + corruption * 0.5, audioCtx.currentTime);
+
+    // Create a short, percussive envelope for each note for a distinct sound
+    const now = audioCtx.currentTime;
+    gain.gain.cancelScheduledValues(now); // Clear any pending gain changes
+    gain.gain.setValueAtTime(muted ? 0.0001 : 0.05, now); // Attack (respect mute state)
+    gain.gain.linearRampToValueAtTime(muted ? 0.0001 : 0.02, now + 0.1); // Decay
+    gain.gain.linearRampToValueAtTime(0.0001, now + 0.3); // Release (fade out quickly)
+
+    // Move to the next note in the sequence, looping back to the beginning if at the end
+    currentNoteIndex = (currentNoteIndex + 1) % melodyNotes.length;
+}
+
+// Plays a short, softer glitch sound effect
+function glitchSound() {
+    if (!audioCtx || muted) return; // Only play if audio is ready and not muted
+
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+
+    o.type = 'sine'; // Changed to sine wave for a softer sound
+    // Reduced frequency range for less shrillness
+    o.frequency.value = 200 + Math.random() * 300; // Frequencies between 200Hz and 500Hz
+    g.gain.value = 0.08; // Slightly reduced initial volume for glitch sound
+
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start();
+    // Rapidly decrease gain to create a short, sharp sound
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3); // Faster decay
+    setTimeout(() => o.stop(), 300); // Stop oscillator after 0.3 seconds
+
+    // Randomly trigger speech synthesis for an eerie effect
+    if (Math.random() < 0.1 && window.speechSynthesis) {
+        const utterances = ['Reality is breaking', 'You are not supposed to be here', 'The code is watching'];
+        const u = new SpeechSynthesisUtterance(utterances[Math.floor(Math.random() * utterances.length)]);
+        u.pitch = 0.5; // Low pitch
+        u.rate = 0.8; // Slow rate
+        u.volume = 0.3; // Low volume
+        window.speechSynthesis.speak(u);
+    }
+}
+
+/* ---------- world objects ---------- */
+// Spawns a new glitch object at a random position
+function spawnGlitch() {
+    const size = 20 + Math.random() * 40; // Random size for glitches
+    glitches.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        w: size, h: size,
+        vx: (Math.random() - 0.5) * 2, // Random horizontal velocity
+        vy: (Math.random() - 0.5) * 2, // Random vertical velocity
+        phase: Math.random() * Math.PI * 2, // For visual glitch animation
+        color: dims[Math.floor(Math.random() * dims.length)].color // Color based on a random dimension
+    });
+}
+
+// Adds a particle effect at a given position
+function addParticle(x, y, color) {
+    particles.push({
+        x, y,
+        size: Math.random() * 4 + 2, // Random size
+        vx: (Math.random() - 0.5) * 6, // Random horizontal velocity
+        vy: (Math.random() - 0.5) * 6, // Random vertical velocity
+        color,
+        life: 30 // Particle lifespan
+    });
+}
+
+// Updates the position and lifespan of all active particles
+function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+        if (p.life <= 0) particles.splice(i, 1); // Remove dead particles
+    }
+}
+
+/* ---------- draw ---------- */
+// Draws the game background, including a grid for Prime Reality
+function drawBackground() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    /* Grid for Prime Reality */
+    if (dimension === 0) {
+        ctx.strokeStyle = '#002200';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < canvas.width; x += 32) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height; y += 32) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+    }
+}
+
+// Draws all active glitch objects with a visual distortion effect
+function drawGlitches() {
+    glitches.forEach(g => {
+        g.phase += 0.02; // Update phase for animation
+        const off = Math.sin(g.phase) * 4; // Offset for glitch effect
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen'; // Blending mode for visual effect
+        ctx.fillStyle = g.color;
+        for (let i = 0; i < 3; i++) {
+            ctx.globalAlpha = 0.3; // Semi-transparent layers
+            ctx.fillRect(g.x + off * i, g.y + off * i, g.w, g.h);
+        }
+        ctx.restore();
+    });
+}
+
+// Draws the player character
+function drawPlayer() {
+    ctx.fillStyle = player.color;
+    // Add a corruption visual effect to the player if corruption is high
+    if (corruption > 50) {
+        const off = Math.sin(Date.now() / 100) * (corruption / 10);
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = '#f0f'; // Magenta layer
+        ctx.fillRect(player.x + off, player.y, player.w, player.h);
+        ctx.fillStyle = '#0ff'; // Cyan layer
+        ctx.fillRect(player.x - off, player.y, player.w, player.h);
+        ctx.restore();
+    }
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+}
+
+// Draws all active particle effects
+function drawParticles() {
+    particles.forEach(p => {
+        ctx.globalAlpha = p.life / 30; // Fade out as life decreases
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+    });
+    ctx.globalAlpha = 1; // Reset global alpha
+}
+
+/* ---------- update ---------- */
+// Updates the player's position based on key presses and current dimension rules
+function updatePlayer() {
+    let speed = player.speed;
+    if (dimension === 1) { // Mirror Dimension: inverted controls
+        if (keys.ArrowUp) player.y += speed;
+        if (keys.ArrowDown) player.y -= speed;
+        if (keys.ArrowLeft) player.x += speed;
+        if (keys.ArrowRight) player.x -= speed; // FIX: Corrected for inverted right movement
+    } else { // Standard controls for other dimensions
+        if (keys.ArrowUp) player.y -= speed;
+        if (keys.ArrowDown) player.y += speed;
+        if (keys.ArrowLeft) player.x -= speed;
+        if (keys.ArrowRight) player.x += speed;
+    }
+
+    // Boundary checks, or wrapping for Void Sector
+    if (dimension !== 3) { // Not Void Sector: clamp to screen edges
+        player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+        player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
+    } else { // Void Sector: wrap around screen
+        if (player.x < 0) player.x = canvas.width;
+        if (player.x > canvas.width) player.x = 0;
+        if (player.y < 0) player.y = canvas.height;
+        if (player.y > canvas.height) player.y = 0;
+    }
+
+    // Code Overflow dimension: random teleportation
+    if (dimension === 4 && Math.random() < 0.02) {
+        player.x = Math.random() * canvas.width;
+        player.y = Math.random() * canvas.height;
+        addParticle(player.x, player.y, '#0ff'); // Add particles on teleport
+
+        // Update status text to indicate teleportation
+        statusText.textContent = "Reality shifted! Teleporting...";
+        // Revert status text after a short delay
+        setTimeout(() => {
+            // Only revert if we are still in Code Overflow and no other message has taken precedence
+            if (dimension === 4) {
+                statusText.textContent = 'Rules: ' + dims[dimension].rules;
+            }
+        }, 1000); // Display message for 1 second
+    }
+    player.color = dims[dimension].color; // Update player color based on current dimension
+}
+
+// Updates the position of glitches and handles collisions with the player
+function updateGlitches() {
+    glitches.forEach((g, idx) => {
+        g.x += g.vx;
+        g.y += g.vy;
+
+        // Bounce off walls
+        if (g.x < 0 || g.x > canvas.width) g.vx *= -1;
+        if (g.y < 0 || g.y > canvas.height) g.vy *= -1;
+
+        // Collision detection with player
+        if (player.x < g.x + g.w && player.x + player.w > g.x &&
+            player.y < g.y + g.h && player.y + player.h > g.y) {
+            corruption = Math.min(100, corruption + 0.2); // Corruption gain reduced from 0.5 to 0.2
+            updateCorruption(); // Update HUD and dimension
+            addParticle(g.x + g.w / 2, g.y + g.h / 2, g.color); // Add particles at collision point
+            glitchSound(); // Play glitch sound effect (unchanged as per user request)
+        }
+    });
+}
+
+// Updates the corruption meter and changes dimensions based on corruption level
+function updateCorruption() {
+    corruption = Math.max(5, corruption); // Ensure corruption never goes below 5%
+    corruptionFill.style.width = corruption + '%'; // Update visual fill of meter
+
+    // Determine new dimension based on corruption level
+    // Changed divisor from 30 back to 20. With 0.2 corruption gain, this will be much slower.
+    const newDim = Math.min(dims.length - 1, Math.floor(corruption / 20));
+
+    if (newDim !== dimension) {
+        dimension = newDim; // Change dimension
+        dimName.textContent = dims[dimension].name; // Update dimension name in HUD
+        statusText.textContent = 'Rules: ' + dims[dimension].rules; // Update rules in HUD
+        addParticle(canvas.width / 2, canvas.height / 2, dims[dimension].color); // Add particles for dimension change
+
+        // If entering Code Overflow, start the timer
+        if (dimension === 4) {
+            codeOverflowActive = true;
+            codeOverflowTimer = 0; // Reset timer
+            statusText.textContent = "Entering Code Overflow: Reality loops!";
+            setTimeout(() => {
+                statusText.textContent = 'Rules: ' + dims[dimension].rules;
+            }, 2000); // Display message for 2 seconds
+        } else {
+            // If leaving Code Overflow, stop the timer
+            codeOverflowActive = false;
+        }
+
+        // When dimension changes, the melody tempo might need to be adjusted
+        if (active && audioCtx) {
+            startMelodyLoop(); // Restart the melody loop to apply new tempo
+        }
+    }
+    // Apply 'corrupted' class to HUD if corruption is high
+    hud.classList.toggle('corrupted', corruption > 50);
+}
+
+/* ---------- initialization ---------- */
+// Initializes game elements before the main loop starts
+function initGame() {
+    // Set initial player position to the center of the canvas
+    player.x = canvas.width / 2;
+    player.y = canvas.height / 2;
+
+    // Spawn initial glitches
+    for (let i = 0; i < 3; i++) {
+        spawnGlitch();
+    }
+}
+
+/* ---------- loop ---------- */
+// Main game loop, continuously updates and draws game elements
+function loop() {
+    if (!active) return; // Stop loop if game is not active
+
+    const now = Date.now();
+    const deltaTime = (now - lastFrameTime) / 1000; // Time in seconds since last frame
+    lastFrameTime = now;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+
+    // Update game elements
+    updatePlayer();
+    updateGlitches();
+    updateParticles();
+
+    // Handle Code Overflow timer
+    if (dimension === 4 && codeOverflowActive) {
+        codeOverflowTimer += deltaTime;
+        if (codeOverflowTimer >= codeOverflowDuration) {
+            corruption = 10; // Reset corruption to force transition back to Prime Reality
+            updateCorruption(); // This will handle the dimension change and status text
+            codeOverflowActive = false; // Stop the timer
+            statusText.textContent = "Reality stabilized. Returning to Prime Reality.";
+            setTimeout(() => {
+                statusText.textContent = 'Rules: ' + dims[dimension].rules;
+            }, 3000); // Display message for 3 seconds
+        }
+    }
+
+    // Draw game elements
+    drawBackground();
+    drawGlitches();
+    drawPlayer();
+    drawParticles();
+
+    // Spawn more glitches if needed, based on corruption level
+    while (glitches.length < 3 + Math.floor(corruption / 15)) {
+        spawnGlitch();
+    }
+
+    requestAnimationFrame(loop); // Request next frame for smooth animation
+}
+
+/* ---------- events ---------- */
+// Event listener for keydown events to track player movement
+window.addEventListener('keydown', (e) => {
+    if (keys.hasOwnProperty(e.key)) {
+        keys[e.key] = true;
+        e.preventDefault(); // Prevent default browser actions (e.g., scrolling)
+    }
+});
+
+// Event listener for keyup events to release player movement
+window.addEventListener('keyup', (e) => {
+    if (keys.hasOwnProperty(e.key)) {
+        keys[e.key] = false;
+        e.preventDefault();
+    }
+}
+);
+
+// Event listener for the start button click
+startBtn.addEventListener('click', () => {
+    intro.classList.add('hidden'); // Hide the intro screen
+    active = true; // Set game to active
+    initAudio(); // Initialize audio
+    initGame(); // Initialize game elements
+    loop(); // Start the main game loop
+});
+
+// Event listener for the mute button click
+muteBtn.addEventListener('click', () => {
+    muted = !muted; // Toggle mute state
+    muteBtn.textContent = muted ? '🔇' : '🔊'; // Update button text/icon
+    if (gain && audioCtx) { // Ensure audio context and gain node exist
+        const now = audioCtx.currentTime;
+        if (muted) {
+            gain.gain.linearRampToValueAtTime(0.0001, now + 0.5); // Smoothly fade out volume
+        } else {
+            gain.gain.linearRampToValueAtTime(0.05, now + 0.5); // Smoothly fade in volume
+        }
+    }
+});
+
+updateCorruption(); // Initial synchronization of HUD elements
+</script>
+</body>
+</html>
