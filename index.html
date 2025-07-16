@@ -241,6 +241,11 @@ const codeOverflowDuration = 15; // Duration in seconds for Code Overflow
 let codeOverflowActive = false; // True if Code Overflow timer is running
 let lastFrameTime = 0; // For calculating deltaTime
 
+// Safe zone variables
+const safeZoneDuration = 2; // Duration of the safe zone in seconds
+let safeZoneTimer = 0; // Tracks time spent in the safe zone
+let inSafeZone = false; // True if currently in the safe zone
+
 /* ---------- audio ---------- */
 // Initializes the Web Audio API context and nodes
 function initAudio() {
@@ -331,12 +336,24 @@ function glitchSound() {
 // Spawns a new glitch object at a random position
 function spawnGlitch() {
     const size = 20 + Math.random() * 40; // Random size for glitches
+
+    // Calculate dynamic glitch speed based on corruption
+    // Lower corruption means slower speed, higher corruption means faster speed
+    const minGlitchSpeed = 1.5; // Slowest speed at low corruption (e.g., 5 corruption)
+    const maxGlitchSpeed = 8; // Fastest speed at high corruption (e.g., 100 corruption)
+    const corruptionRange = 95; // Max corruption (100) - min corruption (5)
+    const corruptionNormalized = corruption - 5; // Normalize corruption to start from 0
+
+    // Interpolate speed: when corruption is 5, speed is minGlitchSpeed. When corruption is 100, speed is maxGlitchSpeed.
+    let currentGlitchSpeed = minGlitchSpeed + ((corruptionNormalized / corruptionRange) * (maxGlitchSpeed - minGlitchSpeed));
+    currentGlitchSpeed = Math.max(minGlitchSpeed, Math.min(maxGlitchSpeed, currentGlitchSpeed)); // Clamp values
+
     glitches.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
         w: size, h: size,
-        vx: (Math.random() - 0.5) * 2, // Random horizontal velocity
-        vy: (Math.random() - 0.5) * 2, // Random vertical velocity
+        vx: (Math.random() - 0.5) * 2 * currentGlitchSpeed, // Apply dynamic speed
+        vy: (Math.random() - 0.5) * 2 * currentGlitchSpeed, // Apply dynamic speed
         phase: Math.random() * Math.PI * 2, // For visual glitch animation
         color: dims[Math.floor(Math.random() * dims.length)].color // Color based on a random dimension
     });
@@ -506,7 +523,6 @@ function updateCorruption() {
     corruptionFill.style.width = corruption + '%'; // Update visual fill of meter
 
     // Determine new dimension based on corruption level
-    // Changed divisor from 30 back to 20. With 0.2 corruption gain, this will be much slower.
     const newDim = Math.min(dims.length - 1, Math.floor(corruption / 20));
 
     if (newDim !== dimension) {
@@ -544,10 +560,17 @@ function initGame() {
     player.x = canvas.width / 2;
     player.y = canvas.height / 2;
 
-    // Spawn initial glitches
-    for (let i = 0; i < 3; i++) {
-        spawnGlitch();
-    }
+    // Clear any existing glitches for the safe zone
+    glitches = [];
+    particles = [];
+
+    // Activate safe zone
+    inSafeZone = true;
+    safeZoneTimer = 0;
+    statusText.textContent = "Safe Zone Active!";
+    setTimeout(() => {
+        statusText.textContent = 'Rules: ' + dims[dimension].rules;
+    }, safeZoneDuration * 1000); // Display message for safe zone duration
 }
 
 /* ---------- loop ---------- */
@@ -565,6 +588,18 @@ function loop() {
     updatePlayer();
     updateGlitches();
     updateParticles();
+
+    // Handle safe zone timer
+    if (inSafeZone) {
+        safeZoneTimer += deltaTime;
+        if (safeZoneTimer >= safeZoneDuration) {
+            inSafeZone = false;
+            // Spawn initial glitches after safe zone
+            for(let i = 0; i < 3; i++) { // Spawn a few initial glitches
+                spawnGlitch();
+            }
+        }
+    }
 
     // Handle Code Overflow timer
     if (dimension === 4 && codeOverflowActive) {
@@ -586,9 +621,22 @@ function loop() {
     drawPlayer();
     drawParticles();
 
-    // Spawn more glitches if needed, based on corruption level
-    while (glitches.length < 3 + Math.floor(corruption / 15)) {
-        spawnGlitch();
+    // Dynamically adjust the number of glitches based on corruption
+    // This logic only applies AFTER the safe zone
+    if (!inSafeZone) {
+        const minGlitches = 3; // Minimum number of glitches
+        const maxGlitches = 25; // Increased maximum number of glitches for more challenge
+        const corruptionRange = 95; // Max corruption (100) - min corruption (5)
+        const corruptionNormalized = corruption - 5; // Normalize corruption to start from 0
+
+        // Calculate target glitches: more glitches when corruption is low
+        // As corruption goes from 5 to 100, targetGlitches goes from maxGlitches down to minGlitches
+        let targetGlitches = maxGlitches - Math.floor((corruptionNormalized / corruptionRange) * (maxGlitches - minGlitches));
+        targetGlitches = Math.max(minGlitches, Math.min(maxGlitches, targetGlitches)); // Clamp values
+
+        while(glitches.length < targetGlitches) {
+            spawnGlitch();
+        }
     }
 
     requestAnimationFrame(loop); // Request next frame for smooth animation
@@ -617,7 +665,7 @@ startBtn.addEventListener('click', () => {
     intro.classList.add('hidden'); // Hide the intro screen
     active = true; // Set game to active
     initAudio(); // Initialize audio
-    initGame(); // Initialize game elements
+    initGame(); // Initialize game elements (including safe zone setup)
     loop(); // Start the main game loop
 });
 
