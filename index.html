@@ -246,6 +246,13 @@ const safeZoneDuration = 2; // Duration of the safe zone in seconds
 let safeZoneTimer = 0; // Tracks time spent in the safe zone
 let inSafeZone = false; // True if currently in the safe zone
 
+// New variables for time-based challenge increases
+let timeSinceLowCorruptionStart = 0; // Tracks time corruption is below 50
+let lastGlitchCountIncreaseTime = 0; // Last time max glitches were increased
+let lastGlitchSpeedIncreaseTime = 0; // Last time glitch speed was increased
+let maxGlitchesBonus = 0; // Additional max glitches due to low corruption
+let glitchSpeedMultiplier = 1.0; // Multiplier for glitch speed due to low corruption
+
 /* ---------- audio ---------- */
 // Initializes the Web Audio API context and nodes
 function initAudio() {
@@ -352,8 +359,9 @@ function spawnGlitch() {
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
         w: size, h: size,
-        vx: (Math.random() - 0.5) * 2 * currentGlitchSpeed, // Apply dynamic speed
-        vy: (Math.random() - 0.5) * 2 * currentGlitchSpeed, // Apply dynamic speed
+        // Apply the new glitchSpeedMultiplier
+        vx: (Math.random() - 0.5) * 2 * currentGlitchSpeed * glitchSpeedMultiplier,
+        vy: (Math.random() - 0.5) * 2 * currentGlitchSpeed * glitchSpeedMultiplier,
         phase: Math.random() * Math.PI * 2, // For visual glitch animation
         color: dims[Math.floor(Math.random() * dims.length)].color // Color based on a random dimension
     });
@@ -571,6 +579,13 @@ function initGame() {
     setTimeout(() => {
         statusText.textContent = 'Rules: ' + dims[dimension].rules;
     }, safeZoneDuration * 1000); // Display message for safe zone duration
+
+    // Reset new challenge variables
+    timeSinceLowCorruptionStart = 0;
+    lastGlitchCountIncreaseTime = 0;
+    lastGlitchSpeedIncreaseTime = 0;
+    maxGlitchesBonus = 0;
+    glitchSpeedMultiplier = 1.0;
 }
 
 /* ---------- loop ---------- */
@@ -615,6 +630,45 @@ function loop() {
         }
     }
 
+    // New: Time-based challenge increases when corruption is below 50
+    if (corruption < 50 && !inSafeZone) {
+        timeSinceLowCorruptionStart += deltaTime;
+
+        // Glitch Count Increase: Every 30 seconds
+        if (timeSinceLowCorruptionStart - lastGlitchCountIncreaseTime >= 30) {
+            maxGlitchesBonus += 3;
+            lastGlitchCountIncreaseTime = timeSinceLowCorruptionStart;
+            statusText.textContent = `Anomaly detected: Glitch density increasing! (+3 max glitches)`;
+            setTimeout(() => {
+                // Only revert if no other message has taken precedence
+                if (statusText.textContent === `Anomaly detected: Glitch density increasing! (+3 max glitches)`) {
+                    statusText.textContent = 'Rules: ' + dims[dimension].rules;
+                }
+            }, 3000);
+        }
+
+        // Glitch Speed Increase: Every 60 seconds
+        if (timeSinceLowCorruptionStart - lastGlitchSpeedIncreaseTime >= 60) {
+            glitchSpeedMultiplier *= 1.1; // 10% faster
+            lastGlitchSpeedIncreaseTime = timeSinceLowCorruptionStart;
+            statusText.textContent = `System instability: Glitches accelerating! (+10% speed)`;
+            setTimeout(() => {
+                // Only revert if no other message has taken precedence
+                if (statusText.textContent === `System instability: Glitches accelerating! (+10% speed)`) {
+                    statusText.textContent = 'Rules: ' + dims[dimension].rules;
+                }
+            }, 3000);
+        }
+    } else {
+        // Reset timers if corruption goes above 50 or in safe zone
+        timeSinceLowCorruptionStart = 0;
+        lastGlitchCountIncreaseTime = 0;
+        lastGlitchSpeedIncreaseTime = 0;
+        // Note: maxGlitchesBonus and glitchSpeedMultiplier persist, making the game permanently harder
+        // even if corruption temporarily rises above 50.
+    }
+
+
     // Draw game elements
     drawBackground();
     drawGlitches();
@@ -625,7 +679,9 @@ function loop() {
     // This logic only applies AFTER the safe zone
     if (!inSafeZone) {
         const minGlitches = 3; // Minimum number of glitches
-        const maxGlitches = 25; // Increased maximum number of glitches for more challenge
+        const baseMaxGlitches = 25; // Base maximum number of glitches
+        const maxGlitches = baseMaxGlitches + maxGlitchesBonus; // Apply bonus from low corruption timer
+
         const corruptionRange = 95; // Max corruption (100) - min corruption (5)
         const corruptionNormalized = corruption - 5; // Normalize corruption to start from 0
 
